@@ -27,4 +27,4 @@ Usage
 2 = same rate, no spatial check<br />
 3 = double rate, no spatial check
 
-- planes: a list of the planes to process. By default all planes are processed.
+- planes: A list of the planes to process. By default all planes are processed.
