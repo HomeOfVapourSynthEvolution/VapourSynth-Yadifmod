@@ -76,10 +76,10 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 const uint8_t * edeintp = vsapi->getReadPtr(edeint, plane);
                 uint8_t * dstp = vsapi->getWritePtr(dst, plane);
                 if (!fieldt)
-                    vs_bitblt(dstp, stride, srcp1 + stride, stride, width, 1);
+                    vs_bitblt(dstp, stride, srcp1 + stride, stride, width * d->vi.format->bytesPerSample, 1);
                 else
-                    vs_bitblt(dstp + stride, stride, edeintp + stride, stride, width, 1);
-                vs_bitblt(dstp + stride * (1 - fieldt), stride << 1, srcp1 + stride * (1 - fieldt), stride << 1, width, height >> 1);
+                    vs_bitblt(dstp + stride, stride, edeintp + stride, stride, width * d->vi.format->bytesPerSample, 1);
+                vs_bitblt(dstp + stride * (1 - fieldt), stride << 1, srcp1 + stride * (1 - fieldt), stride << 1, width * d->vi.format->bytesPerSample, height >> 1);
                 const int starty = 2 + fieldt;
                 const int stopy = fieldt ? height - 3 : height - 4;
                 const int stride1 = stride * starty;
@@ -106,50 +106,92 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 const uint8_t * nextp2n = nextp + stride3;
                 const uint8_t * next2pn = next2pp + stride3;
 
-                for (int y = starty; y <= stopy; y += 2) {
-                    for (int x = 0; x < width; x++) {
-                        const int p1 = srcpp[x];
-                        const int p2 = (prevp[x] + nextp[x]) >> 1;
-                        const int p3 = srcpn[x];
-                        const int tdiff0 = std::abs(prevp[x] - nextp[x]);
-                        const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
-                        const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
-                        int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
-                        if (d->mode < 2) {
-                            const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
-                            const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
-                            const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
-                            const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
-                            diff = VSMAX(VSMAX(diff, mins), -maxs);
+                if (d->vi.format->bytesPerSample == 1) {
+                    for (int y = starty; y <= stopy; y += 2) {
+                        for (int x = 0; x < width; x++) {
+                            const int p1 = srcpp[x];
+                            const int p2 = (prevp[x] + nextp[x]) >> 1;
+                            const int p3 = srcpn[x];
+                            const int tdiff0 = std::abs(prevp[x] - nextp[x]);
+                            const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
+                            const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
+                            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
+                            if (d->mode < 2) {
+                                const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
+                                const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
+                                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
+                                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
+                                diff = VSMAX(VSMAX(diff, mins), -maxs);
+                            }
+                            const int spatialPred = edeintp[x];
+                            if (spatialPred > p2 + diff)
+                                dstp[x] = p2 + diff;
+                            else if (spatialPred < p2 - diff)
+                                dstp[x] = p2 - diff;
+                            else
+                                dstp[x] = spatialPred;
                         }
-                        const int spatialPred = edeintp[x];
-                        if (spatialPred > p2 + diff)
-                            dstp[x] = p2 + diff;
-                        else if (spatialPred < p2 - diff)
-                            dstp[x] = p2 - diff;
-                        else
-                            dstp[x] = spatialPred;
+                        prev2pp += stride3;
+                        prev2pn += stride3;
+                        prevp2p += stride3;
+                        prevp += stride3;
+                        prevp2n += stride3;
+                        srcpp += stride3;
+                        srcpn += stride3;
+                        nextp2p += stride3;
+                        nextp += stride3;
+                        nextp2n += stride3;
+                        next2pp += stride3;
+                        next2pn += stride3;
+                        edeintp += stride3;
+                        dstp += stride3;
                     }
-                    prev2pp += stride3;
-                    prev2pn += stride3;
-                    prevp2p += stride3;
-                    prevp += stride3;
-                    prevp2n += stride3;
-                    srcpp += stride3;
-                    srcpn += stride3;
-                    nextp2p += stride3;
-                    nextp += stride3;
-                    nextp2n += stride3;
-                    next2pp += stride3;
-                    next2pn += stride3;
-                    edeintp += stride3;
-                    dstp += stride3;
+                } else if (d->vi.format->bytesPerSample == 2) {
+                    for (int y = starty; y <= stopy; y += 2) {
+                        for (int x = 0; x < width; x++) {
+                            const int p1 = ((const uint16_t *)srcpp)[x];
+                            const int p2 = (((const uint16_t *)prevp)[x] + ((const uint16_t *)nextp)[x]) >> 1;
+                            const int p3 = ((const uint16_t *)srcpn)[x];
+                            const int tdiff0 = std::abs(((const uint16_t *)prevp)[x] - ((const uint16_t *)nextp)[x]);
+                            const int tdiff1 = (std::abs(((const uint16_t *)prev2pp)[x] - p1) + std::abs(((const uint16_t *)prev2pn)[x] - p3)) >> 1;
+                            const int tdiff2 = (std::abs(((const uint16_t *)next2pp)[x] - p1) + std::abs(((const uint16_t *)next2pn)[x] - p3)) >> 1;
+                            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
+                            if (d->mode < 2) {
+                                const int p0 = (((const uint16_t *)prevp2p)[x] + ((const uint16_t *)nextp2p)[x]) >> 1;
+                                const int p4 = (((const uint16_t *)prevp2n)[x] + ((const uint16_t *)nextp2n)[x]) >> 1;
+                                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
+                                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
+                                diff = VSMAX(VSMAX(diff, mins), -maxs);
+                            }
+                            const int spatialPred = ((const uint16_t *)edeintp)[x];
+                            if (spatialPred > p2 + diff)
+                                ((uint16_t *)dstp)[x] = p2 + diff;
+                            else if (spatialPred < p2 - diff)
+                                ((uint16_t *)dstp)[x] = p2 - diff;
+                            else
+                                ((uint16_t *)dstp)[x] = spatialPred;
+                        }
+                        prev2pp += stride3;
+                        prev2pn += stride3;
+                        prevp2p += stride3;
+                        prevp += stride3;
+                        prevp2n += stride3;
+                        srcpp += stride3;
+                        srcpn += stride3;
+                        nextp2p += stride3;
+                        nextp += stride3;
+                        nextp2n += stride3;
+                        next2pp += stride3;
+                        next2pn += stride3;
+                        edeintp += stride3;
+                        dstp += stride3;
+                    }
                 }
 
                 if (!fieldt)
-                    vs_bitblt(vsapi->getWritePtr(dst, plane) + stride * (height - 2), stride, vsapi->getReadPtr(edeint, plane) + stride * (height - 2), stride, width, 1);
+                    vs_bitblt(vsapi->getWritePtr(dst, plane) + stride * (height - 2), stride, vsapi->getReadPtr(edeint, plane) + stride * (height - 2), stride, width * d->vi.format->bytesPerSample, 1);
                 else
-                    vs_bitblt(vsapi->getWritePtr(dst, plane) + stride * (height - 1), stride, srcp1 + stride * (height - 2), stride, width, 1);
+                    vs_bitblt(vsapi->getWritePtr(dst, plane) + stride * (height - 1), stride, srcp1 + stride * (height - 2), stride, width * d->vi.format->bytesPerSample, 1);
             }
         }
 
@@ -175,22 +217,12 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     YadifmodData * data;
     int err;
 
-    d.order = int64ToIntS(vsapi->propGetInt(in, "order", 0, nullptr));
-    d.field = int64ToIntS(vsapi->propGetInt(in, "field", 0, &err));
+    d.order = !!int64ToIntS(vsapi->propGetInt(in, "order", 0, nullptr));
+    d.field = !!int64ToIntS(vsapi->propGetInt(in, "field", 0, &err));
     if (err)
         d.field = d.order;
-    d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
-    if (err)
-        d.mode = 0;
+    d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, nullptr));
 
-    if (d.order < 0 || d.order > 1) {
-        vsapi->setError(out, "Yadifmod: order must be 0 or 1");
-        return;
-    }
-    if (d.field < 0 || d.field > 1) {
-        vsapi->setError(out, "Yadifmod: field must be 0 or 1");
-        return;
-    }
     if (d.mode < 0 || d.mode > 3) {
         vsapi->setError(out, "Yadifmod: mode must be 0, 1, 2, or 3");
         return;
@@ -200,8 +232,8 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     d.edeint = vsapi->propGetNode(in, "edeint", 0, nullptr);
     d.vi = *vsapi->getVideoInfo(d.node);
 
-    if (!isConstantFormat(&d.vi) || !d.vi.numFrames || d.vi.format->sampleType != stInteger || d.vi.format->bytesPerSample != 1) {
-        vsapi->setError(out, "Yadifmod: only constant format 8-bit integer input supported");
+    if (!isConstantFormat(&d.vi) || !d.vi.numFrames || d.vi.format->sampleType != stInteger || d.vi.format->bytesPerSample > 2) {
+        vsapi->setError(out, "Yadifmod: only constant format 8-16 bits integer input supported");
         vsapi->freeNode(d.node);
         vsapi->freeNode(d.edeint);
         return;
@@ -215,7 +247,7 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     }
 
     if (vsapi->getVideoInfo(d.edeint)->numFrames != d.vi.numFrames * (d.mode & 1 ? 2 : 1)) {
-        vsapi->setError(out, "Yadifmod: edeint clip must have the same number of frames as main clip");
+        vsapi->setError(out, "Yadifmod: edeint clip's number of frames doesn't match");
         vsapi->freeNode(d.node);
         vsapi->freeNode(d.edeint);
         return;
