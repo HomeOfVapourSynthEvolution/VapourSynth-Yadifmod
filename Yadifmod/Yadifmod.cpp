@@ -34,6 +34,49 @@ struct YadifmodData {
     int process[3];
 };
 
+template<typename T>
+static void YadifmodC(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
+    for (int y = starty; y <= stopy; y += 2) {
+        for (int x = 0; x < width; x++) {
+            const int p1 = srcpp[x];
+            const int p2 = (prevp[x] + nextp[x]) >> 1;
+            const int p3 = srcpn[x];
+            const int tdiff0 = std::abs(prevp[x] - nextp[x]);
+            const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
+            const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
+            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
+            if (d->mode < 2) {
+                const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
+                const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
+                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
+                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
+                diff = VSMAX(VSMAX(diff, mins), -maxs);
+            }
+            const int spatialPred = edeintp[x];
+            if (spatialPred > p2 + diff)
+                dstp[x] = p2 + diff;
+            else if (spatialPred < p2 - diff)
+                dstp[x] = p2 - diff;
+            else
+                dstp[x] = spatialPred;
+        }
+        prev2pp += stride;
+        prev2pn += stride;
+        prevp2p += stride;
+        prevp += stride;
+        prevp2n += stride;
+        srcpp += stride;
+        srcpn += stride;
+        nextp2p += stride;
+        nextp += stride;
+        nextp2n += stride;
+        next2pp += stride;
+        next2pn += stride;
+        edeintp += stride;
+        dstp += stride;
+    }
+}
+
 static void VS_CC yadifmodInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
     YadifmodData * d = (YadifmodData *)*instanceData;
     vsapi->setVideoInfo(&d->vi, 1, node);
@@ -79,7 +122,7 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                     vs_bitblt(dstp, stride, srcp1 + stride, stride, width * d->vi.format->bytesPerSample, 1);
                 else
                     vs_bitblt(dstp + stride, stride, edeintp + stride, stride, width * d->vi.format->bytesPerSample, 1);
-                vs_bitblt(dstp + stride * (1 - fieldt), stride << 1, srcp1 + stride * (1 - fieldt), stride << 1, width * d->vi.format->bytesPerSample, height >> 1);
+                vs_bitblt(dstp + stride * (1 - fieldt), stride * 2, srcp1 + stride * (1 - fieldt), stride * 2, width * d->vi.format->bytesPerSample, height >> 1);
                 const int starty = 2 + fieldt;
                 const int stopy = fieldt ? height - 3 : height - 4;
                 const int stride1 = stride * starty;
@@ -97,7 +140,7 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 const uint8_t * prev2pp = srcp0 + stride2;
                 const uint8_t * srcpp = srcp1 + stride2;
                 const uint8_t * next2pp = srcp2 + stride2;
-                const int stride3 = stride << 1;
+                const int stride3 = stride * 2;
                 const uint8_t * prev2pn = prev2pp + stride3;
                 const uint8_t * prevp2p = prevp - stride3;
                 const uint8_t * prevp2n = prevp + stride3;
@@ -107,85 +150,9 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 const uint8_t * next2pn = next2pp + stride3;
 
                 if (d->vi.format->bytesPerSample == 1) {
-                    for (int y = starty; y <= stopy; y += 2) {
-                        for (int x = 0; x < width; x++) {
-                            const int p1 = srcpp[x];
-                            const int p2 = (prevp[x] + nextp[x]) >> 1;
-                            const int p3 = srcpn[x];
-                            const int tdiff0 = std::abs(prevp[x] - nextp[x]);
-                            const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
-                            const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
-                            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
-                            if (d->mode < 2) {
-                                const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
-                                const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
-                                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
-                                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
-                                diff = VSMAX(VSMAX(diff, mins), -maxs);
-                            }
-                            const int spatialPred = edeintp[x];
-                            if (spatialPred > p2 + diff)
-                                dstp[x] = p2 + diff;
-                            else if (spatialPred < p2 - diff)
-                                dstp[x] = p2 - diff;
-                            else
-                                dstp[x] = spatialPred;
-                        }
-                        prev2pp += stride3;
-                        prev2pn += stride3;
-                        prevp2p += stride3;
-                        prevp += stride3;
-                        prevp2n += stride3;
-                        srcpp += stride3;
-                        srcpn += stride3;
-                        nextp2p += stride3;
-                        nextp += stride3;
-                        nextp2n += stride3;
-                        next2pp += stride3;
-                        next2pn += stride3;
-                        edeintp += stride3;
-                        dstp += stride3;
-                    }
+                    YadifmodC<uint8_t>(prev2pp, prev2pn, prevp2p, prevp, prevp2n, srcpp, srcpn, nextp2p, nextp, nextp2n, next2pp, next2pn, edeintp, dstp, width, starty, stopy, stride3, d);
                 } else if (d->vi.format->bytesPerSample == 2) {
-                    for (int y = starty; y <= stopy; y += 2) {
-                        for (int x = 0; x < width; x++) {
-                            const int p1 = ((const uint16_t *)srcpp)[x];
-                            const int p2 = (((const uint16_t *)prevp)[x] + ((const uint16_t *)nextp)[x]) >> 1;
-                            const int p3 = ((const uint16_t *)srcpn)[x];
-                            const int tdiff0 = std::abs(((const uint16_t *)prevp)[x] - ((const uint16_t *)nextp)[x]);
-                            const int tdiff1 = (std::abs(((const uint16_t *)prev2pp)[x] - p1) + std::abs(((const uint16_t *)prev2pn)[x] - p3)) >> 1;
-                            const int tdiff2 = (std::abs(((const uint16_t *)next2pp)[x] - p1) + std::abs(((const uint16_t *)next2pn)[x] - p3)) >> 1;
-                            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
-                            if (d->mode < 2) {
-                                const int p0 = (((const uint16_t *)prevp2p)[x] + ((const uint16_t *)nextp2p)[x]) >> 1;
-                                const int p4 = (((const uint16_t *)prevp2n)[x] + ((const uint16_t *)nextp2n)[x]) >> 1;
-                                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
-                                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
-                                diff = VSMAX(VSMAX(diff, mins), -maxs);
-                            }
-                            const int spatialPred = ((const uint16_t *)edeintp)[x];
-                            if (spatialPred > p2 + diff)
-                                ((uint16_t *)dstp)[x] = p2 + diff;
-                            else if (spatialPred < p2 - diff)
-                                ((uint16_t *)dstp)[x] = p2 - diff;
-                            else
-                                ((uint16_t *)dstp)[x] = spatialPred;
-                        }
-                        prev2pp += stride3;
-                        prev2pn += stride3;
-                        prevp2p += stride3;
-                        prevp += stride3;
-                        prevp2n += stride3;
-                        srcpp += stride3;
-                        srcpn += stride3;
-                        nextp2p += stride3;
-                        nextp += stride3;
-                        nextp2n += stride3;
-                        next2pp += stride3;
-                        next2pn += stride3;
-                        edeintp += stride3;
-                        dstp += stride3;
-                    }
+                    YadifmodC<uint16_t>((const uint16_t *)prev2pp, (const uint16_t *)prev2pn, (const uint16_t *)prevp2p, (const uint16_t *)prevp, (const uint16_t *)prevp2n, (const uint16_t *)srcpp, (const uint16_t *)srcpn, (const uint16_t *)nextp2p, (const uint16_t *)nextp, (const uint16_t *)nextp2n, (const uint16_t *)next2pp, (const uint16_t *)next2pn, (const uint16_t *)edeintp, (uint16_t *)dstp, width, starty, stopy, stride3 >> 1, d);
                 }
 
                 if (!fieldt)
@@ -254,8 +221,8 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     }
 
     if (d.mode & 1) {
-        d.vi.numFrames <<= 1;
-        d.vi.fpsNum <<= 1;
+        d.vi.numFrames *= 2;
+        d.vi.fpsNum *= 2;
     }
 
     const int m = vsapi->propNumElements(in, "planes");
