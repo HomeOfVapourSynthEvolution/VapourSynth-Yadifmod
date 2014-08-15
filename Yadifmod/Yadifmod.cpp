@@ -80,6 +80,7 @@ static void YadifmodC(const T *prev2pp, const T *prev2pn, const T *prevp2p, cons
     }
 }
 
+#ifdef VS_TARGET_CPU_X86
 template<typename T, typename V1, typename V2, int VectorSize>
 static void YadifmodSIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
     for (int y = starty; y <= stopy; y += 2) {
@@ -151,6 +152,7 @@ static void YadifmodSIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, c
         dstp += stride;
     }
 }
+#endif
 
 static void VS_CC yadifmodInit(VSMap *in, VSMap *out, void **instanceData, VSNode *node, VSCore *core, const VSAPI *vsapi) {
     YadifmodData * d = (YadifmodData *)*instanceData;
