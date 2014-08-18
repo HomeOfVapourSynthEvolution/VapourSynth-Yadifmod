@@ -34,7 +34,7 @@ struct YadifmodData {
     VSNodeRef * edeint;
     VSVideoInfo vi;
     int order, field, mode;
-    int process[3];
+    bool process[3];
 };
 
 template<typename T>
@@ -269,8 +269,8 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     YadifmodData * data;
     int err;
 
-    d.order = !!int64ToIntS(vsapi->propGetInt(in, "order", 0, nullptr));
-    d.field = !!int64ToIntS(vsapi->propGetInt(in, "field", 0, &err));
+    d.order = !!vsapi->propGetInt(in, "order", 0, nullptr);
+    d.field = !!vsapi->propGetInt(in, "field", 0, &err);
     if (err)
         d.field = d.order;
     d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, nullptr));
@@ -321,16 +321,18 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
         if (n < 0 || n >= d.vi.format->numPlanes) {
             vsapi->setError(out, "Yadifmod: plane index out of range");
             vsapi->freeNode(d.node);
+            vsapi->freeNode(d.edeint);
             return;
         }
 
         if (d.process[n]) {
             vsapi->setError(out, "Yadifmod: plane specified twice");
             vsapi->freeNode(d.node);
+            vsapi->freeNode(d.edeint);
             return;
         }
 
-        d.process[n] = 1;
+        d.process[n] = true;
     }
 
     data = new YadifmodData;
