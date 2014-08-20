@@ -273,7 +273,7 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     d.field = !!vsapi->propGetInt(in, "field", 0, &err);
     if (err)
         d.field = d.order;
-    d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, nullptr));
+    d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
 
     if (d.mode < 0 || d.mode > 3) {
         vsapi->setError(out, "Yadifmod: mode must be 0, 1, 2, or 3");
