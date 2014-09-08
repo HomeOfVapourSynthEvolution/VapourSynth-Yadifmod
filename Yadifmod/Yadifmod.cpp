@@ -22,7 +22,7 @@
 **   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 
-#include <cstdlib>
+#include <algorithm>
 #ifdef VS_TARGET_CPU_X86
 #include "./vectorclass/vectorclass.h"
 #endif
@@ -37,54 +37,11 @@ struct YadifmodData {
     bool process[3];
 };
 
-template<typename T>
-static void YadifmodC(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
-    for (int y = starty; y <= stopy; y += 2) {
-        for (int x = 0; x < width; x++) {
-            const int p1 = srcpp[x];
-            const int p2 = (prevp[x] + nextp[x]) >> 1;
-            const int p3 = srcpn[x];
-            const int tdiff0 = std::abs(prevp[x] - nextp[x]);
-            const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
-            const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
-            int diff = VSMAX(VSMAX(tdiff0 >> 1, tdiff1), tdiff2);
-            if (d->mode < 2) {
-                const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
-                const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
-                const int maxs = VSMAX(VSMAX(p2 - p3, p2 - p1), VSMIN(p0 - p1, p4 - p3));
-                const int mins = VSMIN(VSMIN(p2 - p3, p2 - p1), VSMAX(p0 - p1, p4 - p3));
-                diff = VSMAX(VSMAX(diff, mins), -maxs);
-            }
-            const int spatialPred = edeintp[x];
-            if (spatialPred > p2 + diff)
-                dstp[x] = p2 + diff;
-            else if (spatialPred < p2 - diff)
-                dstp[x] = p2 - diff;
-            else
-                dstp[x] = spatialPred;
-        }
-        prev2pp += stride;
-        prev2pn += stride;
-        prevp2p += stride;
-        prevp += stride;
-        prevp2n += stride;
-        srcpp += stride;
-        srcpn += stride;
-        nextp2p += stride;
-        nextp += stride;
-        nextp2n += stride;
-        next2pp += stride;
-        next2pn += stride;
-        edeintp += stride;
-        dstp += stride;
-    }
-}
-
 #ifdef VS_TARGET_CPU_X86
-template<typename T, typename V1, typename V2, int VectorSize>
-static void YadifmodSIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
+template<typename T, typename V1, typename V2, int vectorSize>
+static void Yadifmod_SIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
     for (int y = starty; y <= stopy; y += 2) {
-        for (int x = 0; x < width; x += VectorSize) {
+        for (int x = 0; x < width; x += vectorSize) {
             V1 prev2ppV = V1().load_a(prev2pp + x);
             V1 prev2pnV = V1().load_a(prev2pn + x);
             V1 prevp2pV = V1().load_a(prevp2p + x);
@@ -98,21 +55,6 @@ static void YadifmodSIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, c
             V1 next2ppV = V1().load_a(next2pp + x);
             V1 next2pnV = V1().load_a(next2pn + x);
             V1 edeintpV = V1().load_a(edeintp + x);
-            if (width - x < VectorSize) {
-                prev2ppV.cutoff(width - x);
-                prev2pnV.cutoff(width - x);
-                prevp2pV.cutoff(width - x);
-                prevpV.cutoff(width - x);
-                prevp2nV.cutoff(width - x);
-                srcppV.cutoff(width - x);
-                srcpnV.cutoff(width - x);
-                nextp2pV.cutoff(width - x);
-                nextpV.cutoff(width - x);
-                nextp2nV.cutoff(width - x);
-                next2ppV.cutoff(width - x);
-                next2pnV.cutoff(width - x);
-                edeintpV.cutoff(width - x);
-            }
 
             V2 p1 = V2(extend_low(srcppV), extend_high(srcppV));
             V2 p2 = (V2(extend_low(prevpV), extend_high(prevpV)) + V2(extend_low(nextpV), extend_high(nextpV))) >> 1;
@@ -131,10 +73,53 @@ static void YadifmodSIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, c
             V2 spatialPred = V2(extend_low(edeintpV), extend_high(edeintpV));
             V2 result = select(spatialPred > p2 + diff, p2 + diff, select(spatialPred < p2 - diff, p2 - diff, spatialPred));
 
-            if (width - x >= VectorSize)
+            if (width - x >= vectorSize)
                 V1(compress(result.get_low(), result.get_high())).store_a(dstp + x);
             else
                 V1(compress(result.get_low(), result.get_high())).store_partial(width - x, dstp + x);
+        }
+        prev2pp += stride;
+        prev2pn += stride;
+        prevp2p += stride;
+        prevp += stride;
+        prevp2n += stride;
+        srcpp += stride;
+        srcpn += stride;
+        nextp2p += stride;
+        nextp += stride;
+        nextp2n += stride;
+        next2pp += stride;
+        next2pn += stride;
+        edeintp += stride;
+        dstp += stride;
+    }
+}
+#else
+template<typename T>
+static void Yadifmod_C(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
+    for (int y = starty; y <= stopy; y += 2) {
+        for (int x = 0; x < width; x++) {
+            const int p1 = srcpp[x];
+            const int p2 = (prevp[x] + nextp[x]) >> 1;
+            const int p3 = srcpn[x];
+            const int tdiff0 = std::abs(prevp[x] - nextp[x]);
+            const int tdiff1 = (std::abs(prev2pp[x] - p1) + std::abs(prev2pn[x] - p3)) >> 1;
+            const int tdiff2 = (std::abs(next2pp[x] - p1) + std::abs(next2pn[x] - p3)) >> 1;
+            int diff = std::max(std::max(tdiff0 >> 1, tdiff1), tdiff2);
+            if (d->mode < 2) {
+                const int p0 = (prevp2p[x] + nextp2p[x]) >> 1;
+                const int p4 = (prevp2n[x] + nextp2n[x]) >> 1;
+                const int maxs = std::max(std::max(p2 - p3, p2 - p1), std::min(p0 - p1, p4 - p3));
+                const int mins = std::min(std::min(p2 - p3, p2 - p1), std::max(p0 - p1, p4 - p3));
+                diff = std::max(std::max(diff, mins), -maxs);
+            }
+            const int spatialPred = edeintp[x];
+            if (spatialPred > p2 + diff)
+                dstp[x] = p2 + diff;
+            else if (spatialPred < p2 - diff)
+                dstp[x] = p2 - diff;
+            else
+                dstp[x] = spatialPred;
         }
         prev2pp += stride;
         prev2pn += stride;
@@ -228,15 +213,15 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
 
                 if (d->vi.format->bytesPerSample == 1) {
 #ifdef VS_TARGET_CPU_X86
-                    YadifmodSIMD<uint8_t, Vec16uc, Vec16s, 16>(prev2pp, prev2pn, prevp2p, prevp, prevp2n, srcpp, srcpn, nextp2p, nextp, nextp2n, next2pp, next2pn, edeintp, dstp, width, starty, stopy, stride3, d);
+                    Yadifmod_SIMD<uint8_t, Vec16uc, Vec16s, 16>(prev2pp, prev2pn, prevp2p, prevp, prevp2n, srcpp, srcpn, nextp2p, nextp, nextp2n, next2pp, next2pn, edeintp, dstp, width, starty, stopy, stride3, d);
 #else
-                    YadifmodC<uint8_t>(prev2pp, prev2pn, prevp2p, prevp, prevp2n, srcpp, srcpn, nextp2p, nextp, nextp2n, next2pp, next2pn, edeintp, dstp, width, starty, stopy, stride3, d);
+                    Yadifmod_C<uint8_t>(prev2pp, prev2pn, prevp2p, prevp, prevp2n, srcpp, srcpn, nextp2p, nextp, nextp2n, next2pp, next2pn, edeintp, dstp, width, starty, stopy, stride3, d);
 #endif
-                } else if (d->vi.format->bytesPerSample == 2) {
+                } else {
 #ifdef VS_TARGET_CPU_X86
-                    YadifmodSIMD<uint16_t, Vec8us, Vec8i, 8>((const uint16_t *)prev2pp, (const uint16_t *)prev2pn, (const uint16_t *)prevp2p, (const uint16_t *)prevp, (const uint16_t *)prevp2n, (const uint16_t *)srcpp, (const uint16_t *)srcpn, (const uint16_t *)nextp2p, (const uint16_t *)nextp, (const uint16_t *)nextp2n, (const uint16_t *)next2pp, (const uint16_t *)next2pn, (const uint16_t *)edeintp, (uint16_t *)dstp, width, starty, stopy, stride3 >> 1, d);
+                    Yadifmod_SIMD<uint16_t, Vec8us, Vec8i, 8>((const uint16_t *)prev2pp, (const uint16_t *)prev2pn, (const uint16_t *)prevp2p, (const uint16_t *)prevp, (const uint16_t *)prevp2n, (const uint16_t *)srcpp, (const uint16_t *)srcpn, (const uint16_t *)nextp2p, (const uint16_t *)nextp, (const uint16_t *)nextp2n, (const uint16_t *)next2pp, (const uint16_t *)next2pn, (const uint16_t *)edeintp, (uint16_t *)dstp, width, starty, stopy, stride3 / 2, d);
 #else
-                    YadifmodC<uint16_t>((const uint16_t *)prev2pp, (const uint16_t *)prev2pn, (const uint16_t *)prevp2p, (const uint16_t *)prevp, (const uint16_t *)prevp2n, (const uint16_t *)srcpp, (const uint16_t *)srcpn, (const uint16_t *)nextp2p, (const uint16_t *)nextp, (const uint16_t *)nextp2n, (const uint16_t *)next2pp, (const uint16_t *)next2pn, (const uint16_t *)edeintp, (uint16_t *)dstp, width, starty, stopy, stride3 >> 1, d);
+                    Yadifmod_C<uint16_t>((const uint16_t *)prev2pp, (const uint16_t *)prev2pn, (const uint16_t *)prevp2p, (const uint16_t *)prevp, (const uint16_t *)prevp2n, (const uint16_t *)srcpp, (const uint16_t *)srcpn, (const uint16_t *)nextp2p, (const uint16_t *)nextp, (const uint16_t *)nextp2n, (const uint16_t *)next2pp, (const uint16_t *)next2pn, (const uint16_t *)edeintp, (uint16_t *)dstp, width, starty, stopy, stride3 / 2, d);
 #endif
                 }
 
@@ -264,7 +249,7 @@ static void VS_CC yadifmodFree(void *instanceData, VSCore *core, const VSAPI *vs
     delete d;
 }
 
-static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
+static void VS_CC Yadifmod_Create(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
     YadifmodData d;
     YadifmodData * data;
     int err;
@@ -346,5 +331,5 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin *plugin) {
     configFunc("com.holywu.yadifmod", "yadifmod", "Modification of Fizick's yadif avisynth filter", VAPOURSYNTH_API_VERSION, 1, plugin);
-    registerFunc("Yadifmod", "clip:clip;edeint:clip;order:int;field:int:opt;mode:int:opt;planes:int[]:opt;", yadifmodCreate, nullptr, plugin);
+    registerFunc("Yadifmod", "clip:clip;edeint:clip;order:int;field:int:opt;mode:int:opt;planes:int[]:opt;", Yadifmod_Create, nullptr, plugin);
 }
