@@ -249,7 +249,7 @@ static void VS_CC yadifmodFree(void *instanceData, VSCore *core, const VSAPI *vs
     delete d;
 }
 
-static void VS_CC Yadifmod_Create(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
+static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VSCore *core, const VSAPI *vsapi) {
     YadifmodData d;
     YadifmodData * data;
     int err;
@@ -331,5 +331,5 @@ static void VS_CC Yadifmod_Create(const VSMap *in, VSMap *out, void *userData, V
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin *plugin) {
     configFunc("com.holywu.yadifmod", "yadifmod", "Modification of Fizick's yadif avisynth filter", VAPOURSYNTH_API_VERSION, 1, plugin);
-    registerFunc("Yadifmod", "clip:clip;edeint:clip;order:int;field:int:opt;mode:int:opt;planes:int[]:opt;", Yadifmod_Create, nullptr, plugin);
+    registerFunc("Yadifmod", "clip:clip;edeint:clip;order:int;field:int:opt;mode:int:opt;planes:int[]:opt;", yadifmodCreate, nullptr, plugin);
 }
