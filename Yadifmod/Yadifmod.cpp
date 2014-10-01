@@ -33,13 +33,16 @@ struct YadifmodData {
     VSNodeRef * node;
     VSNodeRef * edeint;
     VSVideoInfo vi;
+    const VSVideoInfo * viSaved;
     int order, field, mode;
     bool process[3];
 };
 
 #ifdef VS_TARGET_CPU_X86
 template<typename T, typename V1, typename V2, int vectorSize>
-static void Yadifmod_SIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
+static void Yadifmod_SIMD(const T * prev2pp, const T * prev2pn, const T * prevp2p, const T * prevp, const T * prevp2n, const T * srcpp, const T * srcpn,
+                          const T * nextp2p, const T * nextp, const T * nextp2n, const T * next2pp, const T * next2pn, const T * edeintp, T * dstp,
+                          const int width, const int starty, const int stopy, const int stride, const YadifmodData * const d) {
     for (int y = starty; y <= stopy; y += 2) {
         for (int x = 0; x < width; x += vectorSize) {
             V1 prev2ppV = V1().load_a(prev2pp + x);
@@ -96,7 +99,9 @@ static void Yadifmod_SIMD(const T *prev2pp, const T *prev2pn, const T *prevp2p, 
 }
 #else
 template<typename T>
-static void Yadifmod_C(const T *prev2pp, const T *prev2pn, const T *prevp2p, const T *prevp, const T *prevp2n, const T *srcpp, const T *srcpn, const T *nextp2p, const T *nextp, const T *nextp2n, const T *next2pp, const T *next2pn, const T *edeintp, T *dstp, int width, int starty, int stopy, int stride, const YadifmodData *d) {
+static void Yadifmod_C(const T * prev2pp, const T * prev2pn, const T * prevp2p, const T * prevp, const T * prevp2n, const T * srcpp, const T * srcpn,
+                       const T * nextp2p, const T * nextp, const T * nextp2n, const T * next2pp, const T * next2pn, const T * edeintp, T * dstp,
+                       const int width, const int starty, const int stopy, const int stride, const YadifmodData * const d) {
     for (int y = starty; y <= stopy; y += 2) {
         for (int x = 0; x < width; x++) {
             const int p1 = srcpp[x];
@@ -145,7 +150,7 @@ static void VS_CC yadifmodInit(VSMap *in, VSMap *out, void **instanceData, VSNod
 }
 
 static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, void **instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    YadifmodData * d = (YadifmodData *)*instanceData;
+    const YadifmodData * const d = (const YadifmodData *)*instanceData;
 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(n, d->edeint, frameCtx);
@@ -154,30 +159,30 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
         if (n > 0)
             vsapi->requestFrameFilter(n - 1, d->node, frameCtx);
         vsapi->requestFrameFilter(n, d->node, frameCtx);
-        if (n < d->vi.numFrames - 1)
+        if (n < d->viSaved->numFrames - 1)
             vsapi->requestFrameFilter(n + 1, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef * edeint = vsapi->getFrameFilter(n, d->edeint, frameCtx);
+        const VSFrameRef * const edeint = vsapi->getFrameFilter(n, d->edeint, frameCtx);
         int fieldt = d->field;
         if (d->mode & 1) {
             fieldt = n & 1 ? 1 - d->order : d->order;
             n >>= 1;
         }
-        const VSFrameRef * prv = vsapi->getFrameFilter(n > 0 ? n - 1 : 0, d->node, frameCtx);
-        const VSFrameRef * src = vsapi->getFrameFilter(n, d->node, frameCtx);
-        const VSFrameRef * nxt = vsapi->getFrameFilter(n < d->vi.numFrames - 1 ? n + 1 : d->vi.numFrames - 1, d->node, frameCtx);
+        const VSFrameRef * const prv = vsapi->getFrameFilter(std::max(n - 1, 0), d->node, frameCtx);
+        const VSFrameRef * const src = vsapi->getFrameFilter(n, d->node, frameCtx);
+        const VSFrameRef * const nxt = vsapi->getFrameFilter(std::min(n + 1, d->viSaved->numFrames - 1), d->node, frameCtx);
         const VSFrameRef * fr[] = { d->process[0] ? nullptr : src, d->process[1] ? nullptr : src, d->process[2] ? nullptr : src };
         const int pl[] = { 0, 1, 2 };
-        VSFrameRef * dst = vsapi->newVideoFrame2(d->vi.format, d->vi.width, d->vi.height, fr, pl, src, core);
+        VSFrameRef * const dst = vsapi->newVideoFrame2(d->vi.format, d->vi.width, d->vi.height, fr, pl, src, core);
 
         for (int plane = 0; plane < d->vi.format->numPlanes; plane++) {
             if (d->process[plane]) {
                 const int width = vsapi->getFrameWidth(src, plane);
                 const int height = vsapi->getFrameHeight(src, plane);
                 const int stride = vsapi->getStride(src, plane);
-                const uint8_t * srcp0 = vsapi->getReadPtr(prv, plane);
-                const uint8_t * srcp1 = vsapi->getReadPtr(src, plane);
-                const uint8_t * srcp2 = vsapi->getReadPtr(nxt, plane);
+                const uint8_t * const srcp0 = vsapi->getReadPtr(prv, plane);
+                const uint8_t * const srcp1 = vsapi->getReadPtr(src, plane);
+                const uint8_t * const srcp2 = vsapi->getReadPtr(nxt, plane);
                 const uint8_t * edeintp = vsapi->getReadPtr(edeint, plane);
                 uint8_t * dstp = vsapi->getWritePtr(dst, plane);
                 if (!fieldt)
@@ -199,17 +204,17 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 edeintp += stride1;
                 dstp += stride1;
                 const int stride2 = stride * (starty - 1);
-                const uint8_t * prev2pp = srcp0 + stride2;
-                const uint8_t * srcpp = srcp1 + stride2;
-                const uint8_t * next2pp = srcp2 + stride2;
+                const uint8_t * const prev2pp = srcp0 + stride2;
+                const uint8_t * const srcpp = srcp1 + stride2;
+                const uint8_t * const next2pp = srcp2 + stride2;
                 const int stride3 = stride * 2;
-                const uint8_t * prev2pn = prev2pp + stride3;
-                const uint8_t * prevp2p = prevp - stride3;
-                const uint8_t * prevp2n = prevp + stride3;
-                const uint8_t * srcpn = srcpp + stride3;
-                const uint8_t * nextp2p = nextp - stride3;
-                const uint8_t * nextp2n = nextp + stride3;
-                const uint8_t * next2pn = next2pp + stride3;
+                const uint8_t * const prev2pn = prev2pp + stride3;
+                const uint8_t * const prevp2p = prevp - stride3;
+                const uint8_t * const prevp2n = prevp + stride3;
+                const uint8_t * const srcpn = srcpp + stride3;
+                const uint8_t * const nextp2p = nextp - stride3;
+                const uint8_t * const nextp2n = nextp + stride3;
+                const uint8_t * const next2pn = next2pp + stride3;
 
                 if (d->vi.format->bytesPerSample == 1) {
 #ifdef VS_TARGET_CPU_X86
@@ -268,6 +273,7 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     d.node = vsapi->propGetNode(in, "clip", 0, nullptr);
     d.edeint = vsapi->propGetNode(in, "edeint", 0, nullptr);
     d.vi = *vsapi->getVideoInfo(d.node);
+    d.viSaved = vsapi->getVideoInfo(d.node);
 
     if (!isConstantFormat(&d.vi) || !d.vi.numFrames || d.vi.format->sampleType != stInteger || d.vi.format->bytesPerSample > 2) {
         vsapi->setError(out, "Yadifmod: only constant format 8-16 bits integer input supported");
@@ -283,16 +289,16 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
         return;
     }
 
-    if (vsapi->getVideoInfo(d.edeint)->numFrames != d.vi.numFrames * (d.mode & 1 ? 2 : 1)) {
+    if (d.mode & 1) {
+        d.vi.numFrames *= 2;
+        d.vi.fpsNum *= 2;
+    }
+
+    if (vsapi->getVideoInfo(d.edeint)->numFrames != d.vi.numFrames) {
         vsapi->setError(out, "Yadifmod: edeint clip's number of frames doesn't match");
         vsapi->freeNode(d.node);
         vsapi->freeNode(d.edeint);
         return;
-    }
-
-    if (d.mode & 1) {
-        d.vi.numFrames *= 2;
-        d.vi.fpsNum *= 2;
     }
 
     const int m = vsapi->propNumElements(in, "planes");
