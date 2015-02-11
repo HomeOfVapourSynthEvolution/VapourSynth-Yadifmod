@@ -1,5 +1,5 @@
 #----------------------------------------------------------------------------
-#  Makefile for VapourSynth-Yadifmod, modified based on d2vsource/GNUmakefile
+#  Makefile for VapourSynth-Yadifmod
 #----------------------------------------------------------------------------
 
 include config.mak
