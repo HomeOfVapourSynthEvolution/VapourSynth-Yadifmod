@@ -154,6 +154,7 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
     } else if (activationReason == arAllFramesReady) {
         const VSFrameRef * edeint = vsapi->getFrameFilter(n, d->edeint, frameCtx);
 
+        const int nSaved = n;
         if (d->mode & 1)
             n /= 2;
 
@@ -172,7 +173,7 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
 
         int fieldt;
         if (d->mode & 1)
-            fieldt = (n & 1) ? 1 - effectiveOrder : effectiveOrder;
+            fieldt = (nSaved & 1) ? 1 - effectiveOrder : effectiveOrder;
         else
             fieldt = (d->field == -1) ? effectiveOrder : d->field;
 
