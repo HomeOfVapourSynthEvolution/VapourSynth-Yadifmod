@@ -154,16 +154,27 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
     } else if (activationReason == arAllFramesReady) {
         const VSFrameRef * edeint = vsapi->getFrameFilter(n, d->edeint, frameCtx);
 
-        int fieldt = d->field;
-        if (d->mode & 1) {
-            fieldt = (n & 1) ? 1 - d->order : d->order;
+        if (d->mode & 1)
             n /= 2;
-        }
 
         const VSFrameRef * prv = vsapi->getFrameFilter(std::max(n - 1, 0), d->node, frameCtx);
         const VSFrameRef * src = vsapi->getFrameFilter(n, d->node, frameCtx);
         const VSFrameRef * nxt = vsapi->getFrameFilter(std::min(n + 1, d->viSaved->numFrames - 1), d->node, frameCtx);
         VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
+
+        int err;
+        const int fieldBased = int64ToIntS(vsapi->propGetInt(vsapi->getFramePropsRO(src), "_FieldBased", 0, &err));
+        int effectiveOrder = d->order;
+        if (fieldBased == 1)
+            effectiveOrder = 0;
+        else if (fieldBased == 2)
+            effectiveOrder = 1;
+
+        int fieldt;
+        if (d->mode & 1)
+            fieldt = (n & 1) ? 1 - effectiveOrder : effectiveOrder;
+        else
+            fieldt = (d->field == -1) ? effectiveOrder : d->field;
 
         for (int plane = 0; plane < d->vi.format->numPlanes; plane++) {
             const int width = vsapi->getFrameWidth(src, plane);
@@ -186,7 +197,7 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
 
             const int stride1 = stride * starty;
             const uint8_t * prevp, * nextp;
-            if (fieldt ^ d->order) {
+            if (fieldt ^ effectiveOrder) {
                 prevp = srcp1 + stride1;
                 nextp = srcp2 + stride1;
             } else {
@@ -242,6 +253,18 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
                 memcpy(vsapi->getWritePtr(dst, plane) + stride * (height - 1), srcp1 + stride * (height - 2), width * d->vi.format->bytesPerSample);
         }
 
+        if (d->mode & 1) {
+            VSMap * props = vsapi->getFramePropsRW(dst);
+            int errNum, errDen;
+            int64_t durationNum = vsapi->propGetInt(props, "_DurationNum", 0, &errNum);
+            int64_t durationDen = vsapi->propGetInt(props, "_DurationDen", 0, &errDen);
+            if (!errNum && !errDen) {
+                muldivRational(&durationNum, &durationDen, 1, 2);
+                vsapi->propSetInt(props, "_DurationNum", durationNum, paReplace);
+                vsapi->propSetInt(props, "_DurationDen", durationDen, paReplace);
+            }
+        }
+
         vsapi->freeFrame(prv);
         vsapi->freeFrame(src);
         vsapi->freeFrame(nxt);
@@ -266,7 +289,7 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     d.order = !!vsapi->propGetInt(in, "order", 0, nullptr);
     d.field = !!vsapi->propGetInt(in, "field", 0, &err);
     if (err)
-        d.field = d.order;
+        d.field = -1;
     d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
 
     if (d.mode < 0 || d.mode > 3) {
