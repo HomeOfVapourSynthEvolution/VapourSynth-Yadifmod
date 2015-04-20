@@ -318,6 +318,13 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     }
 
     if (d.mode & 1) {
+        if (d.vi.numFrames > INT_MAX / 2) {
+            vsapi->setError(out, "Yadifmod: resulting clip is too long");
+            vsapi->freeNode(d.node);
+            vsapi->freeNode(d.edeint);
+            return;
+        }
+
         d.vi.numFrames *= 2;
         d.vi.fpsNum *= 2;
     }
