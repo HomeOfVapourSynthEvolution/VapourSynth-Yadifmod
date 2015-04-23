@@ -326,7 +326,7 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
         }
 
         d.vi.numFrames *= 2;
-        d.vi.fpsNum *= 2;
+        muldivRational(&d.vi.fpsNum, &d.vi.fpsDen, 2, 1);
     }
 
     if (vsapi->getVideoInfo(d.edeint)->numFrames != d.vi.numFrames) {
