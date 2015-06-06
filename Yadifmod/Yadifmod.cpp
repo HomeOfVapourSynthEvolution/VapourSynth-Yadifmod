@@ -427,9 +427,10 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
             vsapi->freeNode(d.edeint);
             return;
         }
-
         d.vi.numFrames *= 2;
-        muldivRational(&d.vi.fpsNum, &d.vi.fpsDen, 2, 1);
+
+        if (d.vi.fpsNum && d.vi.fpsDen)
+            muldivRational(&d.vi.fpsNum, &d.vi.fpsDen, 2, 1);
     }
 
     if (vsapi->getVideoInfo(d.edeint)->numFrames != d.vi.numFrames) {
