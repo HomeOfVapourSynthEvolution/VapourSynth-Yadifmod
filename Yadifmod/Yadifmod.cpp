@@ -23,6 +23,8 @@
 */
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <vapoursynth/VapourSynth.h>
 #include <vapoursynth/VSHelper.h>
 #ifdef VS_TARGET_CPU_X86
