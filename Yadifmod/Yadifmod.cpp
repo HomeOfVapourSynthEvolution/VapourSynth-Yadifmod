@@ -389,12 +389,20 @@ static void VS_CC yadifmodCreate(const VSMap *in, VSMap *out, void *userData, VS
     YadifmodData d;
     int err;
 
-    d.order = !!vsapi->propGetInt(in, "order", 0, nullptr);
-    d.field = !!vsapi->propGetInt(in, "field", 0, &err);
+    d.order = int64ToIntS(vsapi->propGetInt(in, "order", 0, nullptr));
+    d.field = int64ToIntS(vsapi->propGetInt(in, "field", 0, &err));
     if (err)
         d.field = -1;
     d.mode = int64ToIntS(vsapi->propGetInt(in, "mode", 0, &err));
 
+    if (d.order < 0 || d.order > 1) {
+        vsapi->setError(out, "Yadifmod: order must be 0 or 1");
+        return;
+    }
+    if (d.field < -1 || d.field > 1) {
+        vsapi->setError(out, "Yadifmod: field must be -1, 0 or 1");
+        return;
+    }
     if (d.mode < 0 || d.mode > 3) {
         vsapi->setError(out, "Yadifmod: mode must be 0, 1, 2 or 3");
         return;
