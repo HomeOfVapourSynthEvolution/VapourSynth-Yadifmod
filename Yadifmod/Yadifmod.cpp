@@ -356,8 +356,10 @@ static const VSFrameRef *VS_CC yadifmodGetFrame(int n, int activationReason, voi
             Yadifmod<float, void, void, 0>(prv, src, nxt, edeint, dst, effectiveOrder, fieldt, d, vsapi);
         }
 
+        VSMap * props = vsapi->getFramePropsRW(dst);
+        vsapi->propSetInt(props, "_FieldBased", 0, paReplace);
+
         if (d->mode & 1) {
-            VSMap * props = vsapi->getFramePropsRW(dst);
             int errNum, errDen;
             int64_t durationNum = vsapi->propGetInt(props, "_DurationNum", 0, &errNum);
             int64_t durationDen = vsapi->propGetInt(props, "_DurationDen", 0, &errDen);
