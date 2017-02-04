@@ -25,8 +25,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <vapoursynth/VapourSynth.h>
-#include <vapoursynth/VSHelper.h>
+
+#include <VapourSynth.h>
+#include <VSHelper.h>
+
 #ifdef VS_TARGET_CPU_X86
 #include "vectorclass/vectorclass.h"
 #endif
@@ -43,7 +45,7 @@ struct YadifmodData {
 template<typename T, typename V1, typename V2, int vectorSize>
 static void filter(const T * _prev2pp, const T * _prev2pn, const T * _prevp2p, const T * _prevp, const T * _prevp2n, const T * _srcpp, const T * _srcpn,
                    const T * _nextp2p, const T * _nextp, const T * _nextp2n, const T * _next2pp, const T * _next2pn, const T * _edeintp, T * dstp,
-                   const int width, const int starty, const int stopy, const int stride, const int mode) {
+                   const int width, const int starty, const int stopy, const int stride, const int mode) noexcept {
     for (int y = starty; y <= stopy; y += 2) {
         for (int x = 0; x < width; x += vectorSize) {
             const V1 prev2pp = V1().load_a(_prev2pp + x);
@@ -98,7 +100,7 @@ template<>
 void filter<float, void, void, 0>(const float * _prev2pp, const float * _prev2pn, const float * _prevp2p, const float * _prevp, const float * _prevp2n,
                                   const float * _srcpp, const float * _srcpn,
                                   const float * _nextp2p, const float * _nextp, const float * _nextp2n, const float * _next2pp, const float * _next2pn,
-                                  const float * _edeintp, float * dstp, const int width, const int starty, const int stopy, const int stride, const int mode) {
+                                  const float * _edeintp, float * dstp, const int width, const int starty, const int stopy, const int stride, const int mode) noexcept {
     const Vec8f pointFive(0.5f);
 
     for (int y = starty; y <= stopy; y += 2) {
@@ -154,7 +156,7 @@ void filter<float, void, void, 0>(const float * _prev2pp, const float * _prev2pn
 template<typename T>
 static void filter(const T * prev2pp, const T * prev2pn, const T * prevp2p, const T * prevp, const T * prevp2n, const T * srcpp, const T * srcpn,
                    const T * nextp2p, const T * nextp, const T * nextp2n, const T * next2pp, const T * next2pn, const T * edeintp, T * VS_RESTRICT dstp,
-                   const int width, const int starty, const int stopy, const int stride, const int mode) {
+                   const int width, const int starty, const int stopy, const int stride, const int mode) noexcept {
     for (int y = starty; y <= stopy; y += 2) {
         for (int x = 0; x < width; x++) {
             const int p1 = srcpp[x];
@@ -193,7 +195,7 @@ static void filter(const T * prev2pp, const T * prev2pn, const T * prevp2p, cons
 template<>
 void filter<float>(const float * prev2pp, const float * prev2pn, const float * prevp2p, const float * prevp, const float * prevp2n, const float * srcpp, const float * srcpn,
                    const float * nextp2p, const float * nextp, const float * nextp2n, const float * next2pp, const float * next2pn, const float * edeintp, float * VS_RESTRICT dstp,
-                   const int width, const int starty, const int stopy, const int stride, const int mode) {
+                   const int width, const int starty, const int stopy, const int stride, const int mode) noexcept {
     for (int y = starty; y <= stopy; y += 2) {
         for (int x = 0; x < width; x++) {
             const float p1 = srcpp[x];
@@ -232,7 +234,7 @@ void filter<float>(const float * prev2pp, const float * prev2pn, const float * p
 
 template<typename T, typename V1, typename V2, int vectorSize>
 static void process(const VSFrameRef * prv, const VSFrameRef * src, const VSFrameRef * nxt, const VSFrameRef * edeint, VSFrameRef * dst,
-                    const int order, const int field, const YadifmodData * d, const VSAPI * vsapi) {
+                    const int order, const int field, const YadifmodData * d, const VSAPI * vsapi) noexcept {
     for (int plane = 0; plane < d->vi.format->numPlanes; plane++) {
         const int width = vsapi->getFrameWidth(src, plane);
         const int height = vsapi->getFrameHeight(src, plane);
