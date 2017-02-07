@@ -18,5 +18,17 @@
     <ClCompile Include="Yadifmod.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Yadifmod_SSE2.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Yadifmod_AVX.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Yadifmod_AVX2.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vectorclass\instrset_detect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
