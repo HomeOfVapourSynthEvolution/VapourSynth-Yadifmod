@@ -36,3 +36,13 @@ Usage
   * 2 = use sse2
   * 3 = use avx
   * 4 = use avx2
+
+
+Compilation
+===========
+
+```
+./autogen.sh
+./configure
+make
+```
